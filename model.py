@@ -1,67 +1,55 @@
+# model.py
 import torch
 import torch.nn as nn
-import torch.optim as optim
-import os
 
 class ChessNet(nn.Module):
     def __init__(self):
         super(ChessNet, self).__init__()
         
-        # --- BLOCCO CONVOLUZIONALE (Il "Cervello Visivo") ---
-        # Analizza la disposizione spaziale dei pezzi sulla scacchiera 8x8.
+        # --- CONVOLUTIONAL BACKBONE (The "Visual" Feature Extractor) ---
+        # Analyzes the spatial arrangement of pieces on the 8x8 board.
         self.conv_block = nn.Sequential(
-            # Primo strato: prende 12 piani (pezzi) e ne crea 64 mappe di caratteristiche.
-            # kernel_size=3 guarda quadratini 3x3. padding=1 mantiene la dimensione 8x8.
+            # First layer: takes 12 input planes (6 pieces x 2 colors) and creates 64 feature maps.
+            # kernel_size=3 looks at 3x3 grids. padding=1 maintains the 8x8 spatial dimension.
             nn.Conv2d(12, 64, kernel_size=3, padding=1),
-            nn.ReLU(), # Funzione di attivazione: rende la rete capace di imparare pattern complessi
+            nn.ReLU(), # Activation function: allows the network to learn non-linear patterns
             
-            # Secondo strato: approfondisce l'analisi portando le mappe da 64 a 128.
+            # Second layer: deepens the analysis by increasing feature maps from 64 to 128.
             nn.Conv2d(64, 128, kernel_size=3, padding=1),
             nn.ReLU()
         )
         
-        # --- STRATO DI APPIATTIMENTO ---
-        # Trasforma il cubo di dati 128x8x8 in un unico vettore piatto.
-        # 128 * 8 * 8 = 8192 elementi.
+        # --- FLATTENING LAYER ---
+        # Transforms the 128x8x8 data cube into a single flat vector.
+        # 128 * 8 * 8 = 8192 elements.
         self.flatten = nn.Flatten()
         
-        # --- POLICY HEAD (Il "Suggeritore di Mosse") ---
-        # Decide quali sono le mosse migliori.
+        # --- POLICY HEAD (The "Move Suggester") ---
+        # Determines the probability distribution over all possible moves.
         self.policy_head = nn.Sequential(
-            nn.Linear(128 * 8 * 8, 512), # Strato denso (completamente connesso)
+            nn.Linear(128 * 8 * 8, 512), # Fully connected layer
             nn.ReLU(),
-            nn.Linear(512, 4096) # 4096 è un'approssimazione (64 caselle partenza * 64 arrivo)
-            # Qui usciamo con dei punteggi (logit) per ogni possibile mossa.
+            nn.Linear(512, 4096) # Outputting logits for approx. 4096 possible move combinations
         )
         
-        # --- VALUE HEAD (Il "Giudice della Posizione") ---
-        # Valuta se la posizione corrente è favorevole o meno.
+        # --- VALUE HEAD (The "Position Judge") ---
+        # Evaluates the current board state's winning probability.
         self.value_head = nn.Sequential(
             nn.Linear(128 * 8 * 8, 256),
             nn.ReLU(),
-            nn.Linear(256, 1), # Un solo numero in uscita
-            nn.Tanh() # Schiaccia il risultato tra -1 (perdi) e 1 (vinci)
+            nn.Linear(256, 1), # Single scalar output
+            nn.Tanh() # Compresses the result between -1 (Loss) and 1 (Win)
         )
 
     def forward(self, x):
         """
-        Definisce il percorso dei dati (Forward Pass):
-        x -> Convoluzioni -> Appiattimento -> Policy & Value
+        Defines the data flow (Forward Pass):
+        x -> Convolutional Block -> Flattening -> Policy & Value Heads
         """
-        x = self.conv_block(x)    # Estrae le caratteristiche spaziali
-        x = self.flatten(x)       # Prepara i dati per i livelli densi
+        x = self.conv_block(x)    # Extract spatial features
+        x = self.flatten(x)       # Prepare data for dense layers
         
-        policy = self.policy_head(x) # Calcola le probabilità delle mosse
-        value = self.value_head(x)   # Calcola il valore della posizione
+        policy = self.policy_head(x) # Compute move probabilities (logits)
+        value = self.value_head(x)   # Compute position evaluation
         
         return policy, value
-
-# --- GESTIONE HARDWARE (RTX 4060) ---
-# Controlla se la GPU è disponibile, altrimenti usa la CPU
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-# Inizializza il modello e spostalo sulla memoria della GPU
-model = ChessNet().to(device)
-
-# Definiamo l'ottimizzatore: Adam è lo standard per iniziare
-optimizer = optim.Adam(model.parameters(), lr=0.001)
