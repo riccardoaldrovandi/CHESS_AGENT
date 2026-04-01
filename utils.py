@@ -67,3 +67,16 @@ def board_to_tensor(board):
     # Spediamo il tensore sulla GPU (se disponibile)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     return input_tensor.to(device)
+
+def encode_move(move):
+    """Converts a chess.Move object to an index (0-4095)"""
+    from_sq = move.from_square
+    to_sq = move.to_square
+    return from_sq * 64 + to_sq
+
+def decode_move(index, board):
+    """Converts an index (0-4095) to a chess.Move object"""
+    from_sq = index // 64
+    to_sq = index % 64
+    move = chess.Move(from_sq, to_sq)
+    return move
